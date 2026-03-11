@@ -271,7 +271,7 @@ export default function Dashboard() {
           </div>
 
           {/* Recent Activity */}
-          <div className="dashboard-card animate-in fade-in slide-in-from-bottom-4 duration-500 delay-[400ms] fill-mode-both">
+          <div className="dashboard-card animate-in fade-in slide-in-from-bottom-4 duration-500 delay-400 fill-mode-both">
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg font-semibold flex items-center gap-3">
@@ -350,7 +350,7 @@ export default function Dashboard() {
           </div>
 
           {/* Quick Actions */}
-          <div className="dashboard-card animate-in fade-in slide-in-from-bottom-4 duration-500 delay-[500ms] fill-mode-both">
+          <div className="dashboard-card animate-in fade-in slide-in-from-bottom-4 duration-500 delay-500 fill-mode-both">
             <CardHeader className="pb-4">
               <CardTitle className="text-lg font-semibold flex items-center gap-3">
                 <div className="icon-container purple h-10 w-10 rounded-xl">

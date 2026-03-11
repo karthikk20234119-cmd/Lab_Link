@@ -87,5 +87,10 @@
     "typescript-eslint": "^8.38.0",
     "vite": "^5.4.19",
     "vite-plugin-pwa": "^1.2.0"
+  },
+  "overrides": {
+    "magic-string": "^0.30.17",
+    "glob": "^13.0.6",
+    "source-map": "^0.7.4"
   }
 }

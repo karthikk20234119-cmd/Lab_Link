@@ -382,7 +382,7 @@ export default function StudentDashboard() {
           </div>
 
           {/* Monthly Borrow Trends */}
-          <div className="dashboard-card animate-in fade-in slide-in-from-bottom-4 duration-700 delay-[100ms] fill-mode-both">
+          <div className="dashboard-card animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100 fill-mode-both">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg font-semibold flex items-center gap-3">
                 <div className="icon-container blue h-11 w-11 rounded-xl flex items-center justify-center">
@@ -521,7 +521,7 @@ export default function StudentDashboard() {
         {/* Bottom Section: Recent Requests, Active Borrows, Quick Actions */}
         <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
           {/* Recent Borrow Requests */}
-          <div className="dashboard-card animate-in fade-in slide-in-from-bottom-4 duration-500 delay-[200ms] fill-mode-both">
+          <div className="dashboard-card animate-in fade-in slide-in-from-bottom-4 duration-500 delay-200 fill-mode-both">
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg font-semibold flex items-center gap-3">
@@ -609,7 +609,7 @@ export default function StudentDashboard() {
           </div>
 
           {/* Active Borrows */}
-          <div className="dashboard-card animate-in fade-in slide-in-from-bottom-4 duration-500 delay-[300ms] fill-mode-both">
+          <div className="dashboard-card animate-in fade-in slide-in-from-bottom-4 duration-500 delay-300 fill-mode-both">
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg font-semibold flex items-center gap-3">
@@ -698,7 +698,7 @@ export default function StudentDashboard() {
           </div>
 
           {/* Quick Actions + Notifications */}
-          <div className="dashboard-card animate-in fade-in slide-in-from-bottom-4 duration-500 delay-[400ms] fill-mode-both">
+          <div className="dashboard-card animate-in fade-in slide-in-from-bottom-4 duration-500 delay-400 fill-mode-both">
             <CardHeader className="pb-4">
               <CardTitle className="text-lg font-semibold flex items-center gap-3">
                 <div className="icon-container purple h-10 w-10 rounded-xl">
