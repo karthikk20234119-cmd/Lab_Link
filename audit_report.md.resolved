@@ -1,0 +1,208 @@
+# 🐛 Project Audit — Bugs & Flaws Found
+
+## Summary
+
+| Severity | Count | Areas |
+|---|---|---|
+| 🔴 Critical | 4 | QR Scanner, Notifications, Triggers |
+| 🟡 Medium | 5 | QR flow, Activity logs, Public pages |
+| 🟢 Low | 3 | UI/UX, minor logic issues |
+
+---
+
+## 🔴 Critical Issues
+
+### 1. QRScanner.tsx — Camera scan never decodes QR codes
+
+**File**: [QRScanner.tsx](file:///c:/Projects/lab-inventory-pro-main/src/components/qr/QRScanner.tsx#L121-L158)
+
+The [scan()](file:///c:/Projects/lab-inventory-pro-main/src/components/qr/QRScanner.tsx#121-159) function checks `typeof window.jsQR !== "undefined"` but `jsQR` is **never attached to `window`** — it's loaded via a dynamic `<script>` tag that may not have loaded yet, or the library doesn't expose a global.
+
+```javascript
+// Line 144-146 — window.jsQR is ALWAYS undefined
+if (typeof window.jsQR !== "undefined") {
+  const code = window.jsQR(imageData.data, ...);  // ❌ Never runs
+}
+```
+
+**Impact**: The QR scanner modal (used from QR Management page) **never actually decodes** QR codes. Camera opens but nothing happens.
+
+**Fix**: Import `jsQR` as an ES module (`import jsQR from 'jsqr'`) like [QRScan.tsx](file:///c:/Projects/lab-inventory-pro-main/src/pages/QRScan.tsx) does on line 24.
+
+---
+
+### 2. Notifications table — Column mismatch between DB and frontend
+
+**DB (Phase 5)**: [phase5_notifications.sql](file:///c:/Projects/lab-inventory-pro-main/supabase/migrations/20251208110000_phase5_notifications.sql#L7-L17)
+**Frontend**: [Notifications.tsx](file:///c:/Projects/lab-inventory-pro-main/src/pages/Notifications.tsx#L14-L23)
+
+The notifications table in the database has these columns:
+```sql
+type VARCHAR(50)        -- 'info', 'warning', 'success', 'error'
+link VARCHAR(255)       -- e.g. '/items/uuid'
+metadata JSONB
+```
+
+But the frontend expects **completely different** columns:
+```typescript
+notification_type: string;       // ❌ Column doesn't exist
+related_entity_id: string;       // ❌ Column doesn't exist
+related_entity_type: string;     // ❌ Column doesn't exist
+```
+
+**Impact**: The notifications page will show **empty/broken data** — `notification_type` is always undefined, icons won't render, and clicking notifications won't navigate anywhere.
+
+**Fix**: Either add the missing columns to the notifications table, or update [Notifications.tsx](file:///c:/Projects/lab-inventory-pro-main/src/pages/Notifications.tsx) to use `type`, `link`, and `metadata`.
+
+---
+
+### 3. Trigger functions use wrong column names / reference non-existent roles
+
+**File**: [phase5_notifications.sql](file:///c:/Projects/lab-inventory-pro-main/supabase/migrations/20251208110000_phase5_notifications.sql#L142-L164)
+
+```sql
+-- Line 151: profiles.role doesn't exist (roles are in user_roles table)
+FOR v_admin IN SELECT id FROM public.profiles WHERE role = 'admin' LOOP
+```
+
+```sql
+-- Line 183: borrow_requests.requester_id doesn't exist (it's student_id)
+NEW.requester_id,
+```
+
+**Impact**: Low stock notifications and request status notifications **silently fail** — no admin ever gets notified about low stock, and students never get notified about request approval/rejection.
+
+> [!NOTE]
+> The security hardening migration we just applied fixed these in the overriding functions (`notify_low_stock`, `notify_request_status_change`), but the original phase5 versions may still be the active ones since they were created later in migration order.
+
+---
+
+### 4. Two competing notification schemas — Phase 1 vs Phase 5
+
+**Phase 1** ([base migration](file:///c:/Projects/lab-inventory-pro-main/supabase/migrations/20251202071725_2a09e200-9424-4d77-a4bd-77519c8c367e.sql)) creates `notifications` with columns including `notification_type`, `related_entity_type`, `related_entity_id`.
+
+**Phase 5** ([phase5](file:///c:/Projects/lab-inventory-pro-main/supabase/migrations/20251208110000_phase5_notifications.sql)) recreates `notifications` with `type`, `link`, `metadata` — **completely different schema**.
+
+Since both use `CREATE TABLE IF NOT EXISTS`, whichever ran first wins. If phase1 ran first, phase5's table creation is skipped but its **functions insert into the wrong columns** (using `type` instead of `notification_type`).
+
+**Impact**: Trigger-created notifications will either fail with column errors or be inserted with wrong data depending on which schema is active.
+
+---
+
+## 🟡 Medium Issues
+
+### 5. QR code format mismatch — Two incompatible formats
+
+**QR Management** ([QRManagement.tsx](file:///c:/Projects/lab-inventory-pro-main/src/pages/QRManagement.tsx#L107-L115)) generates:
+```json
+{"type":"lablink_item","id":"uuid","code":"ITM-2026-0001","ts":1234567890}
+```
+
+**Item Units trigger** ([advanced_item_units.sql](file:///c:/Projects/lab-inventory-pro-main/supabase/migrations/20251207130000_advanced_item_units.sql#L131)) generates:
+```
+LABLINK:uuid:1:1234567890.123
+```
+
+**QRScan.tsx** [handleScan()](file:///c:/Projects/lab-inventory-pro-main/src/pages/QRScan.tsx#150-195) tries JSON parse → extracts `id` → searches items table. Works for QR Management format ✅, but for item_units format it gets `"LABLINK:uuid:1:..."` as a raw string and tries `item_code.eq.LABLINK:uuid:1:...` which will never match ❌.
+
+**QRScanner.tsx** [handleScanResult()](file:///c:/Projects/lab-inventory-pro-main/src/components/qr/QRScanner.tsx#173-233) requires `type === "lablink_item"` — only works for QR Management format, completely rejects item_units format.
+
+**Impact**: QR codes on individual **item units** (with serial numbers) can never be scanned successfully.
+
+---
+
+### 6. PublicScan.tsx — Activity log insert fails for anonymous users
+
+**File**: [PublicScan.tsx](file:///c:/Projects/lab-inventory-pro-main/src/pages/PublicScan.tsx#L48-L54)
+
+```javascript
+await supabase.from("activity_logs").insert({
+  entity_type: "item",
+  entity_id: id,
+  action: "scanned",
+  description: "QR code was scanned"
+  // ❌ Missing: performed_by (required by new RLS policy)
+});
+```
+
+**Impact**: After our security hardening, this insert will be **silently rejected** by RLS since the user isn't authenticated and `performed_by` doesn't match `auth.uid()`.
+
+---
+
+### 7. PublicScan.tsx — Missing `warranty_until` column reference
+
+**File**: [PublicScan.tsx](file:///c:/Projects/lab-inventory-pro-main/src/pages/PublicScan.tsx#L30)
+
+```javascript
+warranty_until,    // ❌ Column is named warranty_expiry in the schema
+```
+
+The items table (phase4) added `warranty_expiry` but the public scan page queries `warranty_until`. This will cause a Supabase error or return null.
+
+---
+
+### 8. fetchRecentScans shows latest items, not actual scans
+
+**File**: [QRScan.tsx](file:///c:/Projects/lab-inventory-pro-main/src/pages/QRScan.tsx#L64-L78)
+
+```javascript
+const { data } = await supabase
+  .from("items")
+  .select("...")
+  .order("updated_at", { ascending: false })
+  .limit(5);
+```
+
+This fetches the 5 most recently updated items, **not** the user's actual recent scans. There's no scan history tracking tied to the user.
+
+---
+
+### 9. PublicItemDetail.tsx — Queries non-existent columns
+
+**File**: [PublicItemDetail.tsx](file:///c:/Projects/lab-inventory-pro-main/src/pages/PublicItemDetail.tsx#L41-L68)
+
+The [ItemData](file:///c:/Projects/lab-inventory-pro-main/src/pages/PublicItemDetail.tsx#41-69) interface references columns that may not exist on the items table: `warranty_expiry` (correct), `storage_temperature`, `risk_level` — these are chemical-specific fields that don't exist on the `items` table (they're on `chemicals`).
+
+---
+
+## 🟢 Low Issues
+
+### 10. QRScan.tsx — `scanFrame` useCallback missing [handleScan](file:///c:/Projects/lab-inventory-pro-main/src/pages/QRScan.tsx#150-195) dependency
+
+**File**: [QRScan.tsx](file:///c:/Projects/lab-inventory-pro-main/src/pages/QRScan.tsx#L114-L137)
+
+```javascript
+const scanFrame = useCallback(() => {
+  // ... uses handleScan but it's not in deps
+}, [isScanning]);  // ❌ Missing handleScan
+```
+
+This means [handleScan](file:///c:/Projects/lab-inventory-pro-main/src/pages/QRScan.tsx#150-195) could be stale if the component re-renders.
+
+---
+
+### 11. Create_notification function uses `type` not `notification_type`
+
+**File**: [phase5_notifications.sql](file:///c:/Projects/lab-inventory-pro-main/supabase/migrations/20251208110000_phase5_notifications.sql#L78)
+
+The `create_notification()` function inserts into `type` column, but if phase1's table schema is active (which has `notification_type`), this function will fail.
+
+---
+
+### 12. Security fixes migration may conflict with phase5 OTP policies
+
+The [20260226_security_fixes.sql](file:///c:/Projects/lab-inventory-pro-main/supabase/migrations/20260226_security_fixes.sql) drops policies by name (e.g., "Anon can create OTP for registration") but these policy names don't match the original ones from the base migration ("Anyone can create OTP"). The DROP IF EXISTS handles this gracefully, but the replacement policies may not have been created if the names didn't match.
+
+---
+
+## Recommended Fix Priority
+
+1. **Fix notifications schema** (Critical #2, #3, #4) — Align DB and frontend
+2. **Fix QRScanner decode** (Critical #1) — Import jsQR properly  
+3. **Fix QR format mismatch** (Medium #5) — Standardize on JSON format
+4. **Fix trigger column references** (Critical #3) — Use `user_roles` not `profiles.role`
+5. **Fix PublicScan activity logging** (Medium #6) — Use SECURITY DEFINER function
+6. **Fix column name mismatches** (Medium #7, #9) — Align with actual schema
+
+> [!IMPORTANT]
+> I recommend fixing all these issues. Would you like me to create and apply the fixes?

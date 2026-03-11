@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <defs>
+    <linearGradient id="bg-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3B82F6"/>
+      <stop offset="100%" style="stop-color:#1D4ED8"/>
+    </linearGradient>
+  </defs>
+  <!-- Background circle -->
+  <rect width="32" height="32" rx="6" fill="url(#bg-gradient)"/>
+  <!-- Flask icon - simplified version of FlaskConical -->
+  <g transform="translate(6, 4)" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- Flask neck -->
+    <path d="M7 0 L7 8"/>
+    <path d="M13 0 L13 8"/>
+    <!-- Flask body -->
+    <path d="M7 8 L2 20 Q0 24 4 24 L16 24 Q20 24 18 20 L13 8"/>
+    <!-- Liquid line -->
+    <path d="M4 18 L16 18"/>
+    <!-- Flask top -->
+    <line x1="5" y1="0" x2="15" y2="0"/>
+  </g>
+</svg>
