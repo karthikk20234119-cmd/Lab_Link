@@ -11,23 +11,22 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
-  FlaskConical,
   Mail,
   Lock,
   User,
   Building2,
   Phone,
-  MapPin,
   Eye,
   EyeOff,
   Hash,
+  ArrowRight,
   Loader2,
 } from "lucide-react";
-import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { z } from "zod";
+import { motion, AnimatePresence } from "framer-motion";
 
 type AuthMode = "login" | "register" | "verify" | "forgot_password";
 
@@ -74,34 +73,6 @@ export default function Auth() {
 
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [oauthLoading, setOauthLoading] = useState<string | null>(null);
-
-  // --- OAuth Sign-In ---
-  const handleOAuthSignIn = async (provider: "google" | "azure") => {
-    setOauthLoading(provider);
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: `${window.location.origin}/auth?confirmed=true`,
-          queryParams: provider === "azure" ? { prompt: "select_account" } : {},
-        },
-      });
-      if (error) throw error;
-    } catch (err: any) {
-      toast({
-        variant: "destructive",
-        title: "OAuth Error",
-        description:
-          err.message ||
-          `Failed to sign in with ${provider === "azure" ? "Microsoft" : "Google"}`,
-      });
-      setOauthLoading(null);
-    }
-  };
-
-  // NOTE: setup-admin call removed for security — it should only be run
-  // manually via CLI or admin panel with the SETUP_SECRET header.
 
   // Fetch departments for registration
   useEffect(() => {
@@ -139,7 +110,6 @@ export default function Auth() {
             title: "Email Verified! ✅",
             description: "Your account is now active. Welcome to LabLink!",
           });
-          // Clean up URL
           window.history.replaceState(
             {},
             document.title,
@@ -150,7 +120,7 @@ export default function Auth() {
     };
 
     handleEmailConfirmation();
-  }, [user]);
+  }, [user, toast]);
 
   // Redirect if already logged in
   useEffect(() => {
@@ -213,7 +183,6 @@ export default function Auth() {
   const sendVerificationOTP = async (email: string, name: string) => {
     const otpCode = generateOTP();
 
-    // Store OTP via rate-limited SECURITY DEFINER function
     const { error: otpError } = await supabase.rpc("create_otp", {
       p_email: email,
       p_otp: otpCode,
@@ -230,7 +199,6 @@ export default function Auth() {
       throw new Error("Failed to generate OTP");
     }
 
-    // Send OTP email
     const { data, error: emailError } = await supabase.functions.invoke(
       "send-email",
       {
@@ -258,7 +226,6 @@ export default function Auth() {
     setIsLoading(true);
 
     try {
-      // Verify OTP via SECURITY DEFINER function (no direct table access)
       const { data: verifyResult, error: verifyError } = await supabase.rpc(
         "verify_otp",
         { p_email: pendingEmail, p_otp: otp },
@@ -276,7 +243,6 @@ export default function Auth() {
         return;
       }
 
-      // Now create the user account
       const redirectUrl = `${window.location.origin}/auth`;
 
       const { data: signUpData, error: signUpError } =
@@ -300,7 +266,6 @@ export default function Auth() {
         throw signUpError;
       }
 
-      // Update profile with register number and set as verified
       if (signUpData.user) {
         await supabase
           .from("profiles")
@@ -314,7 +279,6 @@ export default function Auth() {
           .eq("id", signUpData.user.id);
       }
 
-      // Send credentials email to student from lablink83@gmail.com
       try {
         await supabase.functions.invoke("send-email", {
           body: {
@@ -327,7 +291,6 @@ export default function Auth() {
         });
       } catch (emailError) {
         console.log("Credentials email may not have been sent:", emailError);
-        // Don't fail registration if email fails
       }
 
       toast({
@@ -446,7 +409,6 @@ export default function Auth() {
           return;
         }
 
-        // Log login time
         const {
           data: { user: loggedInUser },
         } = await supabase.auth.getUser();
@@ -465,7 +427,6 @@ export default function Auth() {
         const redirectTo = urlParams.get("redirect");
         navigate(redirectTo || "/dashboard");
       } else {
-        // Registration - first check if email already exists
         const { data: existingUser } = await supabase
           .from("profiles")
           .select("email")
@@ -482,7 +443,6 @@ export default function Auth() {
           return;
         }
 
-        // Use Supabase built-in email confirmation
         const redirectUrl = `${window.location.origin}/auth?confirmed=true`;
 
         const { data: signUpData, error: signUpError } =
@@ -506,7 +466,6 @@ export default function Auth() {
           throw signUpError;
         }
 
-        // Update profile with register number (will be pending until email confirmed)
         if (signUpData.user) {
           await supabase
             .from("profiles")
@@ -520,16 +479,13 @@ export default function Auth() {
             .eq("id", signUpData.user.id);
         }
 
-        // Check if email confirmation is required
         if (signUpData.user && !signUpData.session) {
-          // Email confirmation required
           toast({
             title: "Check Your Email! 📧",
             description:
               "We've sent a confirmation link to your email. Please click it to activate your account.",
           });
         } else {
-          // No email confirmation needed (or already confirmed)
           toast({
             title: "Registration Successful!",
             description: "Your account has been created. You can now log in.",
@@ -562,523 +518,517 @@ export default function Auth() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-secondary/95 to-primary/20">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative h-16 w-16">
+            <div className="absolute inset-0 rounded-xl border-4 border-primary/20"></div>
+            <div className="absolute inset-0 rounded-xl border-4 border-primary border-t-transparent animate-spin"></div>
+          </div>
+          <p className="text-muted-foreground animate-pulse font-medium">Loading LabLink...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-secondary via-secondary/95 to-primary/20">
-      <div className="flex min-h-screen">
-        {/* Left Panel - Branding */}
-        <div className="hidden w-1/2 flex-col justify-between p-12 lg:flex">
-          <div>
-            <Link to="/" className="flex items-center gap-3">
-              <div className="flex h-14 w-14 items-center justify-center rounded-xl overflow-hidden shadow-lg shadow-blue-500/30">
+    <div className="min-h-screen bg-background text-foreground flex overflow-hidden">
+      {/* Left Panel - Branding */}
+      <div className="hidden lg:flex w-1/2 relative flex-col justify-between p-12 overflow-hidden border-r border-border/40">
+        <div className="absolute inset-0 -z-10 overflow-hidden bg-background">
+          <motion.div
+            animate={{
+              scale: [1, 1.2, 1],
+              rotate: [0, 90, 0],
+            }}
+            transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+            className="absolute -left-[10%] top-[20%] h-[500px] w-[500px] rounded-full bg-primary/20 blur-[120px]"
+          />
+          <motion.div
+            animate={{
+              scale: [1, 1.5, 1],
+              rotate: [0, -90, 0],
+            }}
+            transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+            className="absolute -right-[10%] bottom-[10%] h-[600px] w-[600px] rounded-full bg-cyan-500/20 blur-[130px]"
+          />
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_70%,transparent_100%)]"></div>
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative z-10"
+        >
+          <Link to="/" className="flex items-center gap-3">
+             <div className="relative">
+              <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-600 rounded-xl opacity-75 blur-sm transition-opacity"></div>
+              <div className="relative flex h-14 w-14 items-center justify-center rounded-xl overflow-hidden bg-white shadow-lg">
                 <img
                   src="/lablink-logo.jpg"
                   alt="LabLink"
                   className="h-full w-full object-cover"
                 />
               </div>
-              <div className="flex flex-col">
-                <span className="font-display text-2xl font-bold text-secondary-foreground">
-                  LabLink
-                </span>
-                <span className="text-xs text-blue-400 -mt-1 tracking-wider">
-                  LAB SMART
-                </span>
-              </div>
-            </Link>
-          </div>
+            </div>
+            <div className="flex flex-col">
+              <span className="font-display text-3xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">
+                LabLink
+              </span>
+              <span className="text-xs text-blue-500 -mt-1 tracking-wider font-medium">
+                LAB SMART
+              </span>
+            </div>
+          </Link>
+        </motion.div>
 
-          <div className="space-y-6">
-            <h1 className="font-display text-4xl font-bold leading-tight text-secondary-foreground">
-              Digital Laboratory
-              <br />
-              <span className="text-primary">Inventory Management</span>
-            </h1>
-            <p className="max-w-md text-lg text-secondary-foreground/70">
-              Streamline your lab operations with real-time inventory tracking,
-              QR-based management, and comprehensive analytics.
-            </p>
-            <div className="flex gap-4">
-              <div className="rounded-lg bg-background/10 p-4 backdrop-blur">
-                <p className="text-3xl font-bold text-secondary-foreground">
-                  2,450+
-                </p>
-                <p className="text-sm text-secondary-foreground/70">
-                  Items Managed
-                </p>
-              </div>
-              <div className="rounded-lg bg-background/10 p-4 backdrop-blur">
-                <p className="text-3xl font-bold text-secondary-foreground">
-                  99.9%
-                </p>
-                <p className="text-sm text-secondary-foreground/70">Uptime</p>
-              </div>
-              <div className="rounded-lg bg-background/10 p-4 backdrop-blur">
-                <p className="text-3xl font-bold text-secondary-foreground">
-                  500+
-                </p>
-                <p className="text-sm text-secondary-foreground/70">
-                  Active Users
-                </p>
-              </div>
+        <motion.div
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.2 }}
+          className="space-y-8 relative z-10"
+        >
+          <h1 className="font-display text-5xl font-extrabold leading-tight tracking-tight text-foreground">
+            Laboratory Inventory
+            <br />
+            <span className="bg-gradient-to-r from-blue-600 via-cyan-500 to-indigo-600 bg-clip-text text-transparent">
+              and Assets Management System
+            </span>
+          </h1>
+          <p className="max-w-md text-lg text-muted-foreground font-medium">
+            Streamline your lab operations with real-time inventory tracking,
+            QR-based management, and comprehensive analytics.
+          </p>
+          <div className="flex gap-4">
+            <div className="rounded-2xl bg-white/5 p-5 backdrop-blur-xl shadow-lg border border-primary/20">
+              <p className="font-display text-3xl font-bold text-foreground">
+                2,450+
+              </p>
+              <p className="text-sm font-medium text-muted-foreground mt-1">
+                Items Managed
+              </p>
+            </div>
+            <div className="rounded-2xl border bg-white/5 p-5 backdrop-blur-xl shadow-lg border-cyan-500/20">
+              <p className="font-display text-3xl font-bold text-foreground">
+                99.9%
+              </p>
+              <p className="text-sm font-medium text-muted-foreground mt-1">
+                Uptime
+              </p>
             </div>
           </div>
+        </motion.div>
 
-          <div className="space-y-2">
-            <p className="text-sm text-secondary-foreground/50">
-              © 2025 LabLink. Enterprise Lab Management Solution.
-            </p>
-            <p className="text-xs text-secondary-foreground/40">
-              A <span className="text-blue-400">LabLink Solution</span> by{" "}
-              <span className="text-orange-400">Alphax Heros</span>
-            </p>
-          </div>
-        </div>
+        <motion.div
+           initial={{ opacity: 0 }}
+           animate={{ opacity: 1 }}
+           transition={{ delay: 0.4 }}
+           className="relative z-10 space-y-2 mt-auto"
+        >
+          <p className="text-sm text-muted-foreground font-medium">
+            © 2026 LabLink. Enterprise Lab Management Solution.
+          </p>
+          <p className="text-xs text-muted-foreground/80 font-medium">
+            A <span className="text-primary font-semibold">LabLink Solution</span> by{" "}
+            <span className="bg-gradient-to-r from-orange-500 to-amber-500 bg-clip-text text-transparent font-semibold">Alphax Heros</span>
+          </p>
+        </motion.div>
+      </div>
 
-        {/* Right Panel - Auth Form */}
-        <div className="flex w-full items-center justify-center p-6 lg:w-1/2 lg:bg-background">
-          <Card className="w-full max-w-md border-0 shadow-2xl lg:border">
-            <CardHeader className="space-y-1 text-center">
-              <div className="mb-4 flex flex-col items-center lg:hidden">
-                <div className="flex h-16 w-16 items-center justify-center rounded-xl overflow-hidden shadow-lg shadow-blue-500/30">
-                  <img
-                    src="/lablink-logo.jpg"
-                    alt="LabLink"
-                    className="h-full w-full object-cover"
-                  />
+      {/* Right Panel - Auth Form */}
+      <div className="flex w-full items-center justify-center p-6 lg:w-1/2 relative bg-background/50">
+        <motion.div 
+           initial={{ opacity: 0, scale: 0.95 }}
+           animate={{ opacity: 1, scale: 1 }}
+           transition={{ type: "spring", duration: 0.6 }}
+           className="w-full max-w-lg"
+        >
+          <Card className="border border-border/50 bg-background/60 backdrop-blur-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] rounded-3xl overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 via-cyan-500 to-indigo-600"></div>
+            
+            <CardHeader className="space-y-1 text-center pt-10 pb-4">
+              <div className="mb-6 flex flex-col items-center lg:hidden">
+                <div className="relative">
+                    <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-600 rounded-xl opacity-75 blur-sm transition-opacity"></div>
+                    <div className="relative flex h-16 w-16 items-center justify-center rounded-xl overflow-hidden bg-white shadow-lg">
+                      <img
+                        src="/lablink-logo.jpg"
+                        alt="LabLink"
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
                 </div>
-                <div className="flex flex-col items-center mt-2">
-                  <span className="font-display text-xl font-bold">
+                <div className="flex flex-col items-center mt-3">
+                  <span className="font-display text-2xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">
                     LabLink
                   </span>
-                  <span className="text-xs text-blue-500 -mt-0.5 tracking-wider">
+                  <span className="text-xs text-blue-500 -mt-1 tracking-wider font-medium">
                     LAB SMART
                   </span>
                 </div>
               </div>
-              <CardTitle className="font-display text-2xl">
-                {mode === "login"
-                  ? "Welcome Back"
-                  : mode === "verify"
-                    ? "Verify Email"
-                    : mode === "forgot_password"
-                      ? "Reset Password"
-                      : "Create Account"}
-              </CardTitle>
-              <CardDescription>
-                {mode === "login"
-                  ? "Enter your credentials to access your account"
-                  : mode === "verify"
-                    ? `Enter the 6-digit code sent to ${pendingEmail}`
-                    : mode === "forgot_password"
-                      ? "Enter your email to receive a password reset link"
-                      : "Register as a student to start using LabLink"}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {/* OAuth Buttons — login mode only */}
-              {mode === "login" && (
-                <div className="space-y-3 mb-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="lg"
-                    className="w-full gap-3 h-11"
-                    disabled={!!oauthLoading}
-                    onClick={() => handleOAuthSignIn("google")}
-                  >
-                    {oauthLoading === "google" ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <svg viewBox="0 0 24 24" className="h-5 w-5">
-                        <path
-                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
-                          fill="#4285F4"
-                        />
-                        <path
-                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                          fill="#34A853"
-                        />
-                        <path
-                          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
-                          fill="#FBBC05"
-                        />
-                        <path
-                          d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                          fill="#EA4335"
-                        />
-                      </svg>
-                    )}
-                    Continue with Google
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="lg"
-                    className="w-full gap-3 h-11"
-                    disabled={!!oauthLoading}
-                    onClick={() => handleOAuthSignIn("azure")}
-                  >
-                    {oauthLoading === "azure" ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <svg viewBox="0 0 23 23" className="h-5 w-5">
-                        <path fill="#f35325" d="M1 1h10v10H1z" />
-                        <path fill="#81bc06" d="M12 1h10v10H12z" />
-                        <path fill="#05a6f0" d="M1 12h10v10H1z" />
-                        <path fill="#ffba08" d="M12 12h10v10H12z" />
-                      </svg>
-                    )}
-                    Continue with Microsoft
-                  </Button>
 
-                  <div className="relative my-3">
-                    <Separator />
-                    <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-3 text-xs text-muted-foreground">
-                      or continue with email
-                    </span>
-                  </div>
-                </div>
-              )}
-              {mode === "forgot_password" ? (
-                <form onSubmit={handleForgotPassword} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="forgotEmail">Email Address</Label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        id="forgotEmail"
-                        type="email"
-                        placeholder="Enter your email"
-                        className="pl-10"
-                        value={forgotPasswordEmail}
-                        onChange={(e) => setForgotPasswordEmail(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <Button
-                    type="submit"
-                    size="lg"
-                    className="w-full bg-primary hover:bg-primary/90"
-                    disabled={isLoading}
+              <div className="relative h-20 flex flex-col items-center justify-center">
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={mode}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.2 }}
+                    className="absolute w-full"
                   >
-                    {isLoading ? "Sending..." : "Send Reset Link"}
-                  </Button>
-                  <button
-                    type="button"
-                    onClick={() => setMode("login")}
-                    className="w-full text-sm text-muted-foreground hover:text-foreground"
-                  >
-                    ← Back to login
-                  </button>
-                </form>
-              ) : (
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  {mode === "verify" ? (
-                    <div className="space-y-4">
+                    <CardTitle className="font-display text-3xl font-bold tracking-tight">
+                      {mode === "login"
+                        ? "Welcome Back"
+                        : mode === "verify"
+                          ? "Verify Email"
+                          : mode === "forgot_password"
+                            ? "Reset Password"
+                            : "Create Account"}
+                    </CardTitle>
+                    <CardDescription className="text-base mt-2 hidden sm:block">
+                      {mode === "login"
+                        ? "Enter your credentials to securely access your lab"
+                        : mode === "verify"
+                          ? `Enter the 6-digit code sent to ${pendingEmail}`
+                          : mode === "forgot_password"
+                            ? "Enter your email to receive a password reset link"
+                            : "Register as a student to explore our lab catalog"}
+                    </CardDescription>
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+            </CardHeader>
+
+            <CardContent className="pb-10 pt-2 px-8">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={mode}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {mode === "forgot_password" ? (
+                    <form onSubmit={handleForgotPassword} className="space-y-5">
                       <div className="space-y-2">
-                        <Label htmlFor="otp">Verification Code</Label>
-                        <Input
-                          id="otp"
-                          name="otp"
-                          placeholder="Enter 6-digit code"
-                          className="text-center text-2xl tracking-widest"
-                          value={otp}
-                          onChange={(e) =>
-                            setOtp(
-                              e.target.value.replace(/\D/g, "").slice(0, 6),
-                            )
-                          }
-                          maxLength={6}
-                        />
+                        <Label htmlFor="forgotEmail" className="font-medium">Email Address</Label>
+                        <div className="relative">
+                          <Mail className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground/70" />
+                          <Input
+                            id="forgotEmail"
+                            type="email"
+                            placeholder="name@example.com"
+                            className="pl-11 h-12 rounded-xl bg-background/50 border-border/50 focus:bg-background transition-colors"
+                            value={forgotPasswordEmail}
+                            onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                          />
+                        </div>
                       </div>
                       <Button
                         type="submit"
-                        size="lg"
-                        className="w-full bg-primary hover:bg-primary/90"
-                        disabled={isLoading || otp.length !== 6}
+                        size="xl"
+                        className="w-full h-12 rounded-xl text-md font-semibold bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:shadow-[0_0_25px_rgba(59,130,246,0.5)] transition-all"
+                        disabled={isLoading}
                       >
-                        {isLoading ? "Verifying..." : "Verify & Create Account"}
+                        {isLoading ? "Sending..." : "Send Reset Link"}
                       </Button>
-                      <p className="text-center text-sm text-muted-foreground">
-                        Didn't receive the code?{" "}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            sendVerificationOTP(pendingEmail, formData.fullName)
-                          }
-                          className="font-medium text-primary hover:underline"
-                        >
-                          Resend
-                        </button>
-                      </p>
                       <button
                         type="button"
-                        onClick={() => setMode("register")}
-                        className="w-full text-sm text-muted-foreground hover:text-foreground"
+                        onClick={() => setMode("login")}
+                        className="w-full text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mt-4"
                       >
-                        ← Back to registration
+                        Back to Login
                       </button>
-                    </div>
+                    </form>
                   ) : (
-                    <>
-                      {mode === "register" && (
+                    <form onSubmit={handleSubmit} className="space-y-5">
+                      {mode === "verify" ? (
+                        <div className="space-y-5">
+                          <div className="space-y-2">
+                            <Label htmlFor="otp" className="font-medium text-center block">Verification Code</Label>
+                            <Input
+                              id="otp"
+                              name="otp"
+                              placeholder="000000"
+                              className="text-center text-3xl tracking-[1em] h-16 rounded-xl font-display font-medium bg-background/50 border-primary/30 focus:border-primary shadow-inner"
+                              value={otp}
+                              onChange={(e) =>
+                                setOtp(
+                                  e.target.value.replace(/\D/g, "").slice(0, 6),
+                                )
+                              }
+                              maxLength={6}
+                            />
+                          </div>
+                          <Button
+                            type="submit"
+                            size="xl"
+                            className="w-full h-12 rounded-xl text-md font-semibold bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:shadow-[0_0_25px_rgba(59,130,246,0.5)] transition-all"
+                            disabled={isLoading || otp.length !== 6}
+                          >
+                            {isLoading ? "Verifying..." : "Verify & Create Account"}
+                          </Button>
+                          <p className="text-center text-sm font-medium text-muted-foreground mt-4">
+                            Didn't receive the code?{" "}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                sendVerificationOTP(pendingEmail, formData.fullName)
+                              }
+                              className="text-primary hover:text-primary/80 hover:underline transition-colors"
+                            >
+                              Resend
+                            </button>
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setMode("register")}
+                            className="w-full text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            Back to Registration
+                          </button>
+                        </div>
+                      ) : (
                         <>
+                          {mode === "register" && (
+                            <div className="grid grid-cols-1 gap-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                              <div className="space-y-2">
+                                <Label htmlFor="fullName" className="font-medium">Full Name *</Label>
+                                <div className="relative">
+                                  <User className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground/70" />
+                                  <Input
+                                    id="fullName"
+                                    name="fullName"
+                                    placeholder="John Doe"
+                                    className={`pl-11 h-12 rounded-xl bg-background/50 border-border/50 focus:bg-background transition-colors ${errors.fullName ? "border-destructive/50 focus:border-destructive" : ""}`}
+                                    value={formData.fullName}
+                                    onChange={handleInputChange}
+                                  />
+                                </div>
+                                {errors.fullName && (
+                                  <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                                    <span className="h-1 w-1 rounded-full bg-destructive"></span> {errors.fullName}
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                  <Label htmlFor="registerNumber" className="font-medium">
+                                    Register No. *
+                                  </Label>
+                                  <div className="relative">
+                                    <Hash className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground/70" />
+                                    <Input
+                                      id="registerNumber"
+                                      name="registerNumber"
+                                      placeholder="EX: 123456"
+                                      className={`pl-11 h-12 rounded-xl bg-background/50 border-border/50 focus:bg-background transition-colors ${errors.registerNumber ? "border-destructive/50" : ""}`}
+                                      value={formData.registerNumber}
+                                      onChange={handleInputChange}
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                  <Label htmlFor="phone" className="font-medium">
+                                    Phone (Opt)
+                                  </Label>
+                                  <div className="relative">
+                                    <Phone className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground/70" />
+                                    <Input
+                                      id="phone"
+                                      name="phone"
+                                      type="tel"
+                                      placeholder="9876543210"
+                                      className="pl-11 h-12 rounded-xl bg-background/50 border-border/50 focus:bg-background transition-colors"
+                                      value={formData.phone}
+                                      onChange={handleInputChange}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <div className="space-y-2">
+                                <Label htmlFor="department" className="font-medium">Department *</Label>
+                                <div className="relative">
+                                  <Building2 className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground/70 pointer-events-none" />
+                                  <select
+                                    id="department"
+                                    name="department"
+                                    aria-label="Select Department"
+                                    className={`flex h-12 w-full appearance-none rounded-xl border border-border/50 bg-background/50 px-4 py-2 pl-11 text-sm shadow-sm transition-colors focus:bg-background focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary ${errors.department ? "border-destructive/50" : ""}`}
+                                    value={formData.department}
+                                    onChange={handleInputChange}
+                                  >
+                                    <option value="" disabled>Select your department</option>
+                                    {departments.map((dept) => (
+                                      <option key={dept.id} value={dept.id}>
+                                        {dept.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label htmlFor="collegeName" className="font-medium">College Name *</Label>
+                                <div className="relative">
+                                  <Building2 className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground/70" />
+                                  <Input
+                                    id="collegeName"
+                                    name="collegeName"
+                                    placeholder="Enter your college name"
+                                    className={`pl-11 h-12 rounded-xl bg-background/50 border-border/50 focus:bg-background transition-colors ${errors.collegeName ? "border-destructive/50" : ""}`}
+                                    value={formData.collegeName}
+                                    onChange={handleInputChange}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
                           <div className="space-y-2">
-                            <Label htmlFor="fullName">Full Name *</Label>
+                            <Label htmlFor="email" className="font-medium">Email Address {mode === "register" ? "*" : ""}</Label>
                             <div className="relative">
-                              <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                              <Mail className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground/70" />
                               <Input
-                                id="fullName"
-                                name="fullName"
-                                placeholder="Enter your full name"
-                                className={`pl-10 ${errors.fullName ? "border-destructive" : ""}`}
-                                value={formData.fullName}
+                                id="email"
+                                name="email"
+                                type="email"
+                                placeholder="name@example.com"
+                                className={`pl-11 h-12 rounded-xl bg-background/50 border-border/50 focus:bg-background transition-colors ${errors.email ? "border-destructive/50" : ""}`}
+                                value={formData.email}
                                 onChange={handleInputChange}
                               />
                             </div>
-                            {errors.fullName && (
-                              <p className="text-sm text-destructive">
-                                {errors.fullName}
+                            {errors.email && (
+                              <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                                <span className="h-1 w-1 rounded-full bg-destructive"></span> {errors.email}
                               </p>
                             )}
                           </div>
 
                           <div className="space-y-2">
-                            <Label htmlFor="registerNumber">
-                              Register Number *
-                            </Label>
+                            <Label htmlFor="password" className="font-medium">Password {mode === "register" ? "*" : ""}</Label>
                             <div className="relative">
-                              <Hash className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                              <Lock className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground/70" />
                               <Input
-                                id="registerNumber"
-                                name="registerNumber"
-                                placeholder="Enter your register number"
-                                className={`pl-10 ${errors.registerNumber ? "border-destructive" : ""}`}
-                                value={formData.registerNumber}
+                                id="password"
+                                name="password"
+                                type={showPassword ? "text" : "password"}
+                                placeholder="••••••••"
+                                className={`pl-11 pr-11 h-12 rounded-xl bg-background/50 border-border/50 focus:bg-background transition-colors tracking-widest placeholder:tracking-normal ${errors.password ? "border-destructive/50" : ""}`}
+                                value={formData.password}
                                 onChange={handleInputChange}
                               />
-                            </div>
-                            {errors.registerNumber && (
-                              <p className="text-sm text-destructive">
-                                {errors.registerNumber}
-                              </p>
-                            )}
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label htmlFor="department">Department *</Label>
-                            <div className="relative">
-                              <Building2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                              <select
-                                id="department"
-                                name="department"
-                                aria-label="Select Department"
-                                className={`flex h-11 w-full rounded-lg border-2 border-input bg-background px-4 py-2 pl-10 text-sm transition-all duration-200 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 ${errors.department ? "border-destructive" : ""}`}
-                                value={formData.department}
-                                onChange={handleInputChange}
+                              <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/70 hover:text-foreground transition-colors"
                               >
-                                <option value="">Select Department</option>
-                                {departments.map((dept) => (
-                                  <option key={dept.id} value={dept.id}>
-                                    {dept.name}
-                                  </option>
-                                ))}
-                              </select>
+                                {showPassword ? (
+                                  <EyeOff className="h-5 w-5" />
+                                ) : (
+                                  <Eye className="h-5 w-5" />
+                                )}
+                              </button>
                             </div>
-                            {errors.department && (
-                              <p className="text-sm text-destructive">
-                                {errors.department}
+                            {errors.password && (
+                              <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                                <span className="h-1 w-1 rounded-full bg-destructive"></span> {errors.password}
                               </p>
                             )}
                           </div>
 
-                          <div className="space-y-2">
-                            <Label htmlFor="collegeName">College Name *</Label>
-                            <div className="relative">
-                              <Building2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                              <Input
-                                id="collegeName"
-                                name="collegeName"
-                                placeholder="Enter your college name"
-                                className={`pl-10 ${errors.collegeName ? "border-destructive" : ""}`}
-                                value={formData.collegeName}
-                                onChange={handleInputChange}
-                              />
+                          {mode === "register" && (
+                            <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                              <Label htmlFor="confirmPassword" className="font-medium">
+                                Confirm Password *
+                              </Label>
+                              <div className="relative">
+                                <Lock className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground/70" />
+                                <Input
+                                  id="confirmPassword"
+                                  name="confirmPassword"
+                                  type={showPassword ? "text" : "password"}
+                                  placeholder="••••••••"
+                                  className={`pl-11 h-12 rounded-xl bg-background/50 border-border/50 focus:bg-background transition-colors tracking-widest placeholder:tracking-normal ${errors.confirmPassword ? "border-destructive/50" : ""}`}
+                                  value={formData.confirmPassword}
+                                  onChange={handleInputChange}
+                                />
+                              </div>
                             </div>
-                            {errors.collegeName && (
-                              <p className="text-sm text-destructive">
-                                {errors.collegeName}
-                              </p>
-                            )}
-                          </div>
+                          )}
 
-                          <div className="space-y-2">
-                            <Label htmlFor="phone">
-                              Phone Number (Optional)
-                            </Label>
-                            <div className="relative">
-                              <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                              <Input
-                                id="phone"
-                                name="phone"
-                                type="tel"
-                                placeholder="Enter phone number"
-                                className="pl-10"
-                                value={formData.phone}
-                                onChange={handleInputChange}
-                              />
+                          {mode === "login" && (
+                            <div className="flex items-center justify-end">
+                              <button
+                                type="button"
+                                onClick={() => setMode("forgot_password")}
+                                className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                              >
+                                Forgot password?
+                              </button>
                             </div>
+                          )}
+
+                          <Button
+                            type="submit"
+                            size="xl"
+                            className="w-full h-12 rounded-xl text-md font-semibold bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:shadow-[0_0_25px_rgba(59,130,246,0.5)] transition-all group"
+                            disabled={isLoading}
+                          >
+                            {isLoading ? (
+                               <span className="flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin" /> Please wait...
+                               </span>
+                            ) : mode === "login" ? (
+                              <span className="flex items-center gap-2">
+                                Sign In <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                              </span>
+                            ) : (
+                               <span className="flex items-center gap-2">
+                                Continue <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                               </span>
+                            )}
+                          </Button>
+
+                          <div className="mt-6 text-center text-sm font-medium text-muted-foreground">
+                            {mode === "login" ? (
+                              <>
+                                Don't have an account?{" "}
+                                <button
+                                  type="button"
+                                  onClick={() => setMode("register")}
+                                  className="text-primary hover:text-primary/80 transition-colors"
+                                >
+                                  Register here
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                Already have an account?{" "}
+                                <button
+                                  type="button"
+                                  onClick={() => setMode("login")}
+                                  className="text-primary hover:text-primary/80 transition-colors"
+                                >
+                                  Sign In Instead
+                                </button>
+                              </>
+                            )}
                           </div>
                         </>
                       )}
-
-                      <div className="space-y-2">
-                        <Label htmlFor="email">Email *</Label>
-                        <div className="relative">
-                          <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                          <Input
-                            id="email"
-                            name="email"
-                            type="email"
-                            placeholder="Enter your email"
-                            className={`pl-10 ${errors.email ? "border-destructive" : ""}`}
-                            value={formData.email}
-                            onChange={handleInputChange}
-                          />
-                        </div>
-                        {errors.email && (
-                          <p className="text-sm text-destructive">
-                            {errors.email}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="password">Password *</Label>
-                        <div className="relative">
-                          <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                          <Input
-                            id="password"
-                            name="password"
-                            type={showPassword ? "text" : "password"}
-                            placeholder="Enter your password"
-                            className={`pl-10 pr-10 ${errors.password ? "border-destructive" : ""}`}
-                            value={formData.password}
-                            onChange={handleInputChange}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                          >
-                            {showPassword ? (
-                              <EyeOff className="h-4 w-4" />
-                            ) : (
-                              <Eye className="h-4 w-4" />
-                            )}
-                          </button>
-                        </div>
-                        {errors.password && (
-                          <p className="text-sm text-destructive">
-                            {errors.password}
-                          </p>
-                        )}
-                        {mode === "register" && (
-                          <p className="text-xs text-muted-foreground">
-                            Min 8 chars, with uppercase, lowercase, number &
-                            special character
-                          </p>
-                        )}
-                      </div>
-
-                      {mode === "register" && (
-                        <div className="space-y-2">
-                          <Label htmlFor="confirmPassword">
-                            Confirm Password *
-                          </Label>
-                          <div className="relative">
-                            <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                            <Input
-                              id="confirmPassword"
-                              name="confirmPassword"
-                              type={showPassword ? "text" : "password"}
-                              placeholder="Confirm your password"
-                              className={`pl-10 ${errors.confirmPassword ? "border-destructive" : ""}`}
-                              value={formData.confirmPassword}
-                              onChange={handleInputChange}
-                            />
-                          </div>
-                          {errors.confirmPassword && (
-                            <p className="text-sm text-destructive">
-                              {errors.confirmPassword}
-                            </p>
-                          )}
-                        </div>
-                      )}
-
-                      {mode === "login" && (
-                        <div className="flex items-center justify-end">
-                          <button
-                            type="button"
-                            onClick={() => setMode("forgot_password")}
-                            className="text-sm text-primary hover:underline"
-                          >
-                            Forgot password?
-                          </button>
-                        </div>
-                      )}
-
-                      <Button
-                        type="submit"
-                        size="lg"
-                        className="w-full bg-primary hover:bg-primary/90"
-                        disabled={isLoading}
-                      >
-                        {isLoading
-                          ? "Please wait..."
-                          : mode === "login"
-                            ? "Sign In"
-                            : "Continue"}
-                      </Button>
-
-                      <p className="text-center text-sm text-muted-foreground">
-                        {mode === "login" ? (
-                          <>
-                            Don't have an account?{" "}
-                            <button
-                              type="button"
-                              onClick={() => setMode("register")}
-                              className="font-medium text-primary hover:underline"
-                            >
-                              Register as Student
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            Already have an account?{" "}
-                            <button
-                              type="button"
-                              onClick={() => setMode("login")}
-                              className="font-medium text-primary hover:underline"
-                            >
-                              Sign In
-                            </button>
-                          </>
-                        )}
-                      </p>
-                    </>
+                    </form>
                   )}
-                </form>
-              )}
+                </motion.div>
+              </AnimatePresence>
             </CardContent>
           </Card>
-        </div>
+        </motion.div>
       </div>
     </div>
   );

@@ -23,10 +23,10 @@ export default defineConfig(({ mode }) => ({
         "lablink-logo-light.jpg",
       ],
       manifest: {
-        name: "LabLink — Digital Laboratory Inventory Management",
+        name: "LabLink — Laboratory Inventory and Assets Management System",
         short_name: "LabLink",
         description:
-          "Enterprise-grade Digital Laboratory Inventory Management System with real-time tracking, QR-based management, and comprehensive analytics.",
+          "Enterprise-grade Laboratory Inventory and Assets Management System with real-time tracking, QR-based management, and comprehensive analytics.",
         theme_color: "#6366f1",
         background_color: "#0f172a",
         display: "standalone",

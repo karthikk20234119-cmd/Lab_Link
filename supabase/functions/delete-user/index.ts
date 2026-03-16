@@ -124,24 +124,44 @@ const handler = async (req: Request): Promise<Response> => {
     // Order matters - delete child records before parent
     
     // Delete from user_departments
-    await supabaseAdmin.from("user_departments").delete().eq("user_id", user_id);
-    console.log("Deleted user_departments");
+    try {
+      await supabaseAdmin.from("user_departments").delete().eq("user_id", user_id);
+      console.log("Deleted user_departments");
+    } catch (e) {
+      console.log("user_departments cleanup skipped", e);
+    }
 
     // Delete from user_roles
-    await supabaseAdmin.from("user_roles").delete().eq("user_id", user_id);
-    console.log("Deleted user_roles");
+    try {
+      await supabaseAdmin.from("user_roles").delete().eq("user_id", user_id);
+      console.log("Deleted user_roles");
+    } catch (e) {
+       console.log("user_roles cleanup skipped", e);
+    }
 
     // Delete from login_logs
-    await supabaseAdmin.from("login_logs").delete().eq("user_id", user_id);
-    console.log("Deleted login_logs");
+    try {
+      await supabaseAdmin.from("login_logs").delete().eq("user_id", user_id);
+      console.log("Deleted login_logs");
+    } catch (e) {
+      console.log("login_logs cleanup skipped", e);
+    }
 
     // Delete from notifications
-    await supabaseAdmin.from("notifications").delete().eq("user_id", user_id);
-    console.log("Deleted notifications");
+    try {
+      await supabaseAdmin.from("notifications").delete().eq("user_id", user_id);
+      console.log("Deleted notifications");
+    } catch (e) {
+      console.log("notifications cleanup skipped", e);
+    }
 
     // Delete from audit_logs (user_id references profiles)
-    await supabaseAdmin.from("audit_logs").delete().eq("user_id", user_id);
-    console.log("Deleted audit_logs");
+    try {
+      await supabaseAdmin.from("audit_logs").delete().eq("user_id", user_id);
+      console.log("Deleted audit_logs");
+    } catch (e) {
+      console.log("audit_logs cleanup skipped", e);
+    }
 
     // Delete from activity_logs if exists
     try {
@@ -160,15 +180,19 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // Delete from otp_verifications (by email)
-    const { data: profileData } = await supabaseAdmin
-      .from("profiles")
-      .select("email")
-      .eq("id", user_id)
-      .single();
-    
-    if (profileData?.email) {
-      await supabaseAdmin.from("otp_verifications").delete().eq("email", profileData.email);
-      console.log("Deleted otp_verifications");
+    try {
+      const { data: profileData } = await supabaseAdmin
+        .from("profiles")
+        .select("email")
+        .eq("id", user_id)
+        .single();
+      
+      if (profileData?.email) {
+        await supabaseAdmin.from("otp_verifications").delete().eq("email", profileData.email);
+        console.log("Deleted otp_verifications");
+      }
+    } catch (e) {
+      console.log("otp_verifications cleanup skipped", e);
     }
 
     // Delete profile
